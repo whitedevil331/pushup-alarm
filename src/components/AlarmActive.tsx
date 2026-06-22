@@ -43,6 +43,29 @@ export default function AlarmActive({ targetPushups, onComplete }: AlarmActivePr
   }, [wakeUpAcknowledged, finished]);
 
   useEffect(() => {
+    // Request permission immediately on mount of active alarm screen
+    const requestInitialPermissions = async () => {
+      try {
+        if (typeof window !== 'undefined' && 'Capacitor' in window) {
+          const { Camera } = await import('@capacitor/camera');
+          const permissionResponse = await Camera.requestPermissions({ permissions: ['camera'] });
+          if (permissionResponse.camera !== 'granted') {
+            console.warn('Camera permission not granted via Capacitor');
+          }
+        } else {
+          // On Web, do a quick dummy getUserMedia call to prompt for camera permission
+          const dummyStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+          // Stop it immediately so camera hardware doesn't stay active until "Let's Go" is clicked
+          dummyStream.getTracks().forEach(track => track.stop());
+        }
+      } catch (err) {
+        console.warn('Initial camera permission request failed:', err);
+      }
+    };
+    requestInitialPermissions();
+  }, []);
+
+  useEffect(() => {
     if (pushupCount > lastSpokenCount) {
       setLastSpokenCount(pushupCount);
       window.speechSynthesis.cancel();

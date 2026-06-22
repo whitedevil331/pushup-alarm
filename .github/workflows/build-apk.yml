@@ -26,6 +26,9 @@ jobs:
 
       - name: Add Android Platform
         run: npx cap add android
+
+      - name: Configure Android Permissions
+        run: node scripts/prepare-android.js
         
       - name: Sync Capacitor
         run: npx cap sync android

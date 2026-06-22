@@ -33,11 +33,16 @@ export default function App() {
     const savedAlarm = localStorage.getItem('pushup_alarm');
     if (savedAlarm) setAlarm(JSON.parse(savedAlarm));
 
-    // Handle Local Notification Clicks
+    // Handle Local Notification Clicks and delivery
     if (typeof window !== 'undefined' && 'Capacitor' in window) {
       import('@capacitor/local-notifications').then(({ LocalNotifications }) => {
         LocalNotifications.addListener('localNotificationActionPerformed', (notificationAction) => {
           if (notificationAction.notification.id === 1) {
+            setIsRinging(true);
+          }
+        });
+        LocalNotifications.addListener('localNotificationReceived', (notification) => {
+          if (notification.id === 1) {
             setIsRinging(true);
           }
         });
@@ -80,6 +85,16 @@ export default function App() {
         const perf = await LocalNotifications.requestPermissions();
         if (perf.display !== 'granted') return;
 
+        // Create high-priority notification channel for Android 8+
+        await LocalNotifications.createChannel({
+          id: 'pushup-alarm-high',
+          name: 'Pushup Alarm High Priority',
+          description: 'Loud alarm for wake ups requiring pushups',
+          importance: 5, // MAX importance / heads-up / custom sound priority
+          visibility: 1, // Visible on lockscreen
+          vibration: true,
+        });
+
         // Cancel existing pending notifications
         await LocalNotifications.cancel({ notifications: [{ id: 1 }] });
 
@@ -103,6 +118,7 @@ export default function App() {
                 id: 1,
                 schedule: { at: target, allowWhileIdle: true },
                 sound: 'beep.wav',
+                channelId: 'pushup-alarm-high', // Assign explicitly to our high priority channel
                 actionTypeId: '',
                 extra: null
               }

@@ -1,0 +1,6 @@
+{
+  "name": "Pushup Alarm",
+  "description": "An alarm clock that won't stop ringing until you complete your assigned pushups. Uses device camera and AI to detect body posture.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

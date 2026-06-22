@@ -32,6 +32,17 @@ export default function App() {
 
     const savedAlarm = localStorage.getItem('pushup_alarm');
     if (savedAlarm) setAlarm(JSON.parse(savedAlarm));
+
+    // Handle Local Notification Clicks
+    if (typeof window !== 'undefined' && 'Capacitor' in window) {
+      import('@capacitor/local-notifications').then(({ LocalNotifications }) => {
+        LocalNotifications.addListener('localNotificationActionPerformed', (notificationAction) => {
+          if (notificationAction.notification.id === 1) {
+            setIsRinging(true);
+          }
+        });
+      });
+    }
   }, []);
 
   useEffect(() => {
@@ -57,9 +68,51 @@ export default function App() {
     localStorage.setItem('pushup_stats', JSON.stringify(newStats));
   };
 
-  const saveAlarm = (newAlarm: AlarmConfig) => {
+  const saveAlarm = async (newAlarm: AlarmConfig) => {
     setAlarm(newAlarm);
     localStorage.setItem('pushup_alarm', JSON.stringify(newAlarm));
+
+    // Handle Native Notifications if in Capacitor mode
+    if (typeof window !== 'undefined' && 'Capacitor' in window) {
+      const { LocalNotifications } = await import('@capacitor/local-notifications');
+      
+      try {
+        const perf = await LocalNotifications.requestPermissions();
+        if (perf.display !== 'granted') return;
+
+        // Cancel existing pending notifications
+        await LocalNotifications.cancel({ notifications: [{ id: 1 }] });
+
+        if (newAlarm.isActive) {
+          // Calculate next trigger time
+          const [hours, minutes] = newAlarm.timeStr.split(':').map(Number);
+          const now = new Date();
+          const target = new Date();
+          target.setHours(hours, minutes, 0, 0);
+
+          if (target.getTime() <= now.getTime()) {
+            // Target is tomorrow
+            target.setDate(target.getDate() + 1);
+          }
+
+          await LocalNotifications.schedule({
+            notifications: [
+              {
+                title: 'Wake Up! Time for Pushups!',
+                body: `You need to do ${newAlarm.targetPushups} pushups to turn off this alarm.`,
+                id: 1,
+                schedule: { at: target, allowWhileIdle: true },
+                sound: 'beep.wav',
+                actionTypeId: '',
+                extra: null
+              }
+            ]
+          });
+        }
+      } catch (e) {
+        console.error('Notification scheduling error:', e);
+      }
+    }
   };
 
   const handleTestAlarm = () => {

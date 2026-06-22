@@ -57,6 +57,15 @@ export default function AlarmActive({ targetPushups, onComplete }: AlarmActivePr
     // Start Webcam
     const setupCamera = async () => {
       try {
+        // Explicitly request permissions via Capacitor if available
+        if (typeof window !== 'undefined' && 'Capacitor' in window) {
+           const { Camera } = await import('@capacitor/camera');
+           const permissionResponse = await Camera.requestPermissions({ permissions: ['camera'] });
+           if (permissionResponse.camera !== 'granted') {
+             throw new Error('Camera permission not granted');
+           }
+        }
+
         const stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
           audio: false, // We don't need audio

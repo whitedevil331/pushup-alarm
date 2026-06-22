@@ -1,0 +1,27 @@
+name: Build & Release Web APK
+on:
+  push:
+    branches: [ main ] # Triggers when you push to the main branch
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Dependencies & Build React
+        run: |
+          npm install
+          npm run build
+
+      - name: Convert Website to APK
+        uses: github/marketplace/actions/website-to-apk-action@v1 # Wraps the built folder into an APK
+        with:
+          build-folder-path: "dist" # Change to "build" if using older Create React App templates
+          app-name: "MyReactApp"

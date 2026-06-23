@@ -19,7 +19,7 @@ export class PushupCounter {
   private stage: 'down' | 'up' | null = null;
   private count = 0;
 
-  public update(poses: poseDetection.Pose[]): { count: number; stage: string | null; keypoints: poseDetection.Keypoint[] } {
+  public update(poses: poseDetection.Pose[]): { count: number; stage: 'down' | 'up' | null; keypoints: poseDetection.Keypoint[]; angle?: number } {
     if (poses.length === 0) {
       return { count: this.count, stage: this.stage, keypoints: [] };
     }

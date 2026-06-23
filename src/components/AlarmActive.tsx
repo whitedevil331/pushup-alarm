@@ -68,9 +68,15 @@ export default function AlarmActive({ targetPushups, onComplete }: AlarmActivePr
   useEffect(() => {
     if (pushupCount > lastSpokenCount) {
       setLastSpokenCount(pushupCount);
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(pushupCount.toString());
-      window.speechSynthesis.speak(utterance);
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window && window.speechSynthesis && typeof SpeechSynthesisUtterance !== 'undefined') {
+        try {
+          window.speechSynthesis.cancel();
+          const utterance = new SpeechSynthesisUtterance(pushupCount.toString());
+          window.speechSynthesis.speak(utterance);
+        } catch (e) {
+          console.warn('Speech synthesis playback error', e);
+        }
+      }
     }
   }, [pushupCount, lastSpokenCount]);
 
@@ -147,97 +153,110 @@ export default function AlarmActive({ targetPushups, onComplete }: AlarmActivePr
          return;
       }
 
-      const video = videoRef.current;
-      const videoWidth = video.videoWidth;
-      const videoHeight = video.videoHeight;
+      try {
+        const video = videoRef.current;
+        const videoWidth = video.videoWidth;
+        const videoHeight = video.videoHeight;
 
-      // Make sure canvas is same size as video
-      video.width = videoWidth;
-      video.height = videoHeight;
-      if (canvasRef.current) {
-         canvasRef.current.width = videoWidth;
-         canvasRef.current.height = videoHeight;
-      }
+        // Make sure canvas is same size as video
+        video.width = videoWidth;
+        video.height = videoHeight;
+        if (canvasRef.current) {
+           canvasRef.current.width = videoWidth;
+           canvasRef.current.height = videoHeight;
+        }
 
-      const poses = await detectorRef.current.estimatePoses(video);
-      
-      const result = counterRef.current.update(poses);
-      
-      // Update React state only when count changes to avoid re-render lag during requestAnimationFrame
-      if (result.count !== pushupCountRef.current) {
-         pushupCountRef.current = result.count;
-         setPushupCount(result.count);
-      }
+        const poses = await detectorRef.current.estimatePoses(video);
+        
+        const result = counterRef.current.update(poses);
+        
+        // Update React state only when count changes to avoid re-render lag during requestAnimationFrame
+        if (result.count !== pushupCountRef.current) {
+           pushupCountRef.current = result.count;
+           setPushupCount(result.count);
+        }
 
-      // Draw skeleton
-      if (canvasRef.current) {
-         const ctx = canvasRef.current.getContext('2d');
-         if (ctx) {
-            ctx.clearRect(0, 0, videoWidth, videoHeight);
-            
-            // Draw Keypoints
-            result.keypoints.forEach((keypoint) => {
-               if (keypoint.score && keypoint.score > 0.3) {
-                  ctx.beginPath();
-                  ctx.arc(keypoint.x, keypoint.y, 6, 0, 2 * Math.PI);
-                  ctx.fillStyle = result.stage === 'down' ? '#ef4444' : '#a3e635'; // red or lime
-                  ctx.fill();
-               }
-            });
+        // Draw skeleton
+        if (canvasRef.current) {
+           const ctx = canvasRef.current.getContext('2d');
+           if (ctx) {
+              ctx.clearRect(0, 0, videoWidth, videoHeight);
+              
+              // Draw Keypoints
+              if (result && Array.isArray(result.keypoints)) {
+                result.keypoints.forEach((keypoint) => {
+                   if (keypoint && keypoint.score && keypoint.score > 0.3 && isFinite(keypoint.x) && isFinite(keypoint.y)) {
+                      ctx.beginPath();
+                      ctx.arc(keypoint.x, keypoint.y, 6, 0, 2 * Math.PI);
+                      ctx.fillStyle = result.stage === 'down' ? '#ef4444' : '#a3e635'; // red or lime
+                      ctx.fill();
+                   }
+                });
+              }
 
-            // Draw Skeleton lines with different color based on stage
-            const lineColor = result.stage === 'down' ? 'rgba(239, 68, 68, 0.8)' : 'rgba(163, 230, 53, 0.8)';
-            const lineWidth = 6;
-            
-            const drawLine = (p1Name: string, p2Name: string) => {
-               const p1 = result.keypoints.find(k => k.name === p1Name);
-               const p2 = result.keypoints.find(k => k.name === p2Name);
-               if (p1 && p2 && p1.score && p1.score > 0.3 && p2.score && p2.score > 0.3) {
+              // Draw Skeleton lines with different color based on stage
+              const lineColor = result.stage === 'down' ? 'rgba(239, 68, 68, 0.8)' : 'rgba(163, 230, 53, 0.8)';
+              const lineWidth = 6;
+              
+              const drawLine = (p1Name: string, p2Name: string) => {
+                 if (!result || !Array.isArray(result.keypoints)) return;
+                 const p1 = result.keypoints.find(k => k && k.name === p1Name);
+                 const p2 = result.keypoints.find(k => k && k.name === p2Name);
+                 if (p1 && p2 && p1.score && p1.score > 0.3 && p2.score && p2.score > 0.3 && isFinite(p1.x) && isFinite(p1.y) && isFinite(p2.x) && isFinite(p2.y)) {
+                   ctx.beginPath();
+                   ctx.moveTo(p1.x, p1.y);
+                   ctx.lineTo(p2.x, p2.y);
+                   ctx.strokeStyle = lineColor;
+                   ctx.lineWidth = lineWidth;
+                   ctx.lineCap = 'round';
+                   ctx.stroke();
+                 }
+              }
+
+              // Arms
+              drawLine('left_shoulder', 'left_elbow');
+              drawLine('left_elbow', 'left_wrist');
+              drawLine('right_shoulder', 'right_elbow');
+              drawLine('right_elbow', 'right_wrist');
+              // Shoulders
+              drawLine('left_shoulder', 'right_shoulder');
+              // Torso
+              drawLine('left_shoulder', 'left_hip');
+              drawLine('right_shoulder', 'right_hip');
+              drawLine('left_hip', 'right_hip');
+              
+              // Visual feedback of the angle as a bar on the side
+              if (result.angle && isFinite(result.angle)) {
+                 ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+                 ctx.fillRect(10, 10, 20, 200);
+                 const fillHeight = Math.min(200, Math.max(0, ((result.angle - 60) / 100) * 200));
+                 ctx.fillStyle = result.stage === 'down' ? '#ef4444' : '#a3e635';
+                 ctx.fillRect(10, 210 - fillHeight, 20, fillHeight);
+                 
+                 // Draw threshold line
+                 ctx.strokeStyle = '#ffffff';
+                 ctx.lineWidth = 2;
                  ctx.beginPath();
-                 ctx.moveTo(p1.x, p1.y);
-                 ctx.lineTo(p2.x, p2.y);
-                 ctx.strokeStyle = lineColor;
-                 ctx.lineWidth = lineWidth;
-                 ctx.lineCap = 'round';
+                 ctx.moveTo(8, 210 - ((100 - 60) / 100) * 200); // 100 deg threshold
+                 ctx.lineTo(32, 210 - ((100 - 60) / 100) * 200);
                  ctx.stroke();
-               }
-            }
+              }
+           }
+        }
 
-            // Arms
-            drawLine('left_shoulder', 'left_elbow');
-            drawLine('left_elbow', 'left_wrist');
-            drawLine('right_shoulder', 'right_elbow');
-            drawLine('right_elbow', 'right_wrist');
-            // Shoulders
-            drawLine('left_shoulder', 'right_shoulder');
-            // Torso
-            drawLine('left_shoulder', 'left_hip');
-            drawLine('right_shoulder', 'right_hip');
-            drawLine('left_hip', 'right_hip');
-            
-            // Visual feedback of the angle as a bar on the side
-            if (result.angle) {
-               ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-               ctx.fillRect(10, 10, 20, 200);
-               const fillHeight = Math.min(200, Math.max(0, ((result.angle - 60) / 100) * 200));
-               ctx.fillStyle = result.stage === 'down' ? '#ef4444' : '#a3e635';
-               ctx.fillRect(10, 210 - fillHeight, 20, fillHeight);
-               
-               // Draw threshold line
-               ctx.strokeStyle = '#ffffff';
-               ctx.lineWidth = 2;
-               ctx.beginPath();
-               ctx.moveTo(8, 210 - ((100 - 60) / 100) * 200); // 100 deg threshold
-               ctx.lineTo(32, 210 - ((100 - 60) / 100) * 200);
-               ctx.stroke();
-            }
-         }
-      }
-
-      if (result.count >= targetPushups) {
-         handleFinished();
-      } else {
-         requestRef.current = requestAnimationFrame(detect);
+        if (result.count >= targetPushups) {
+           handleFinished();
+        } else {
+           requestRef.current = requestAnimationFrame(detect);
+        }
+      } catch (err) {
+         console.error('Detection frame error:', err);
+         // Guard against infinite fast spin if error happens continuously
+         setTimeout(() => {
+           if (!finishedRef.current) {
+             requestRef.current = requestAnimationFrame(detect);
+           }
+         }, 80);
       }
     };
 
